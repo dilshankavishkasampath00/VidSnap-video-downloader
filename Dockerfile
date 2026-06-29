@@ -1,38 +1,38 @@
 FROM node:20-bookworm-slim
 
-# Install required system packages
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    python3 \
-    python3-pip \
-    ffmpeg \
-    curl \
-    ca-certificates \
-  && apt-get clean \
-  && rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
+# Install system dependencies
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
+        python3 \
+        python3-pip \
+        ffmpeg \
+        curl \
+        ca-certificates && \
+    rm -rf /var/lib/apt/lists/*
 
-# Install yt-dlp via pip
-RUN python3 -m pip install --no-cache-dir yt-dlp && \
-    echo "Testing yt-dlp installation..." && \
-    python3 -m yt_dlp --version
+# Install yt-dlp
+RUN python3 -m pip install --break-system-packages --no-cache-dir yt-dlp
 
 WORKDIR /app
 
-# Copy package files and install dependencies
+# Install Node dependencies
 COPY package*.json ./
-RUN npm install --production
+RUN npm ci --omit=dev
 
-# Copy app source code
+# Copy project
 COPY . .
 
-# Ensure downloads directory exists and is writable
-RUN mkdir -p downloads && chmod 777 downloads
+# Create downloads folder
+RUN mkdir -p downloads
 
-# Expose the application port
+# Environment
+ENV NODE_ENV=production
+ENV PORT=3000
+
 EXPOSE 3000
 
-# Health check endpoint
-HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
-    CMD curl -f http://localhost:3000/health || exit 1
+# Health check
+HEALTHCHECK --interval=30s --timeout=5s --start-period=20s \
+CMD curl -f http://localhost:$PORT/health || exit 1
 
-# Start the server
 CMD ["npm", "start"]
