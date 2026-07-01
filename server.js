@@ -6,6 +6,7 @@ const { execSync } = require('child_process');
 const { v4: uuidv4 } = require('uuid');
 const ffmpegPath = require('ffmpeg-static');
 const AWS = require('aws-sdk');
+const { URL } = require('url');
 
 // Find yt-dlp executable
 function findYtDlp() {
@@ -190,6 +191,17 @@ app.post('/api/info', (req, res) => {
   const { url } = req.body;
   if (!url) return res.status(400).json({ error: 'URL is required' });
 
+  // Quick validation: reject requests that target this app or localhost
+  try {
+    const parsed = new URL(url);
+    const host = parsed.hostname.toLowerCase();
+    if (host.includes('viddownloder') || host.includes('vidsnap') || host === 'localhost' || host === '127.0.0.1') {
+      return res.status(400).json({ error: 'Unsupported URL: the provided URL appears to point to this site or localhost. Please provide the direct source video URL (e.g., a Facebook, TikTok, Instagram, or YouTube video link).' });
+    }
+  } catch (e) {
+    // ignore invalid URL parse here; yt-dlp will surface errors
+  }
+
   console.log(`[API/info] Fetching info for URL: ${url}`);
 
   let args;
@@ -255,10 +267,16 @@ app.post('/api/info', (req, res) => {
       if (code !== 0) {
         responseSent = true;
         console.error('[API/info] yt-dlp error output:', errOutput);
+        // Improve guidance when yt-dlp reports Unsupported URL
+        const lowerErr = (errOutput || '').toLowerCase();
+        const helpMsg = lowerErr.includes('unsupported url')
+          ? 'The provided URL is not a supported media URL. Provide the direct video URL (for example a Facebook/TikTok/YouTube link). If the video is login-protected, include a cookies file or use a browser cookie source.'
+          : 'If this is a login-protected Instagram/Facebook post, select a browser cookie source or supply a cookies file.';
+
         return res.status(500).json({ 
           error: 'Could not fetch video info. Make sure the URL is public and correct.',
           details: errOutput.substring(0, 2000),
-          help: 'If this is a login-protected Instagram post, select a browser cookie source or supply a cookies file.',
+          help: helpMsg,
           debug: { config: YT_DLP_CONFIG, args }
         });
       }
